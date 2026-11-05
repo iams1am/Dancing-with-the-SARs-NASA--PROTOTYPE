@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
-import { SiteHeader } from "../components/SiteHeader";
+import { Button, ButtonLink } from "../components/ui/Primitives";
 
 export default function Error({
   error,
@@ -18,7 +17,6 @@ export default function Error({
   return (
     <div className="page">
       <div className="shell">
-        <SiteHeader />
         <main className="page-main" id="main-content">
           <div className="route-state route-error" role="alert">
             <span className="data-state-mark">!</span>
@@ -30,10 +28,10 @@ export default function Error({
                 the home page.
               </p>
               <div className="actions">
-                <button className="button button-primary" type="button" onClick={() => reset()}>
+                <Button variant="primary" onClick={() => reset()}>
                   Try again
-                </button>
-                <Link className="button" href="/">Return to home</Link>
+                </Button>
+                <ButtonLink href="/" variant="secondary">Return to home</ButtonLink>
               </div>
             </div>
           </div>

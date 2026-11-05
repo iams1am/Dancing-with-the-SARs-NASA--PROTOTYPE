@@ -100,16 +100,20 @@ export function GlobeScene() {
     fetch("/data/event.json")
       .then((response) => (response.ok ? response.json() : null))
       .then((event: { center?: { latitude: number; longitude: number } } | null) => {
+        if (disposed) return;
         if (!event?.center) return;
         const latitude = THREE.MathUtils.degToRad(event.center.latitude);
         const longitude = THREE.MathUtils.degToRad(event.center.longitude);
+        // The equirectangular texture puts longitude 0 at +x and eastern
+        // longitudes at -z, so the locator must use -sin(longitude) or it
+        // lands on the antipodal meridian.
         locator.position.set(
           Math.cos(latitude) * Math.cos(longitude),
           Math.sin(latitude),
-          Math.cos(latitude) * Math.sin(longitude)
+          -Math.cos(latitude) * Math.sin(longitude)
         ).multiplyScalar(1.065);
         const locatorX = Math.cos(latitude) * Math.cos(longitude);
-        const locatorZ = Math.cos(latitude) * Math.sin(longitude);
+        const locatorZ = -Math.cos(latitude) * Math.sin(longitude);
         globe.rotation.y = Math.atan2(-locatorX, locatorZ);
         locator.visible = true;
       })
@@ -254,6 +258,7 @@ export function GlobeScene() {
       renderer.domElement.removeEventListener("keydown", onKeyDown);
       resetRef.current = null;
       renderer.dispose();
+      renderer.forceContextLoss();
       earth.geometry.dispose();
       (earth.material as THREE.Material).dispose();
       if (earth.material !== fallback) fallback.dispose();
