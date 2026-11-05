@@ -1,11 +1,9 @@
-import Link from "next/link";
-import { SiteHeader } from "../components/SiteHeader";
+import { ButtonLink } from "../components/ui/Primitives";
 
 export default function NotFound() {
   return (
     <div className="page">
       <div className="shell">
-        <SiteHeader />
         <main className="page-main" id="main-content">
           <div className="route-state route-error" role="status">
             <span className="data-state-mark">?</span>
@@ -14,8 +12,8 @@ export default function NotFound() {
               <h1>We could not find that page.</h1>
               <p>Use the links below to return to the project.</p>
               <div className="actions">
-                <Link className="button button-primary" href="/explore">Open the explorer</Link>
-                <Link className="button" href="/">Return to home</Link>
+                <ButtonLink href="/explore" variant="primary">Open the explorer</ButtonLink>
+                <ButtonLink href="/" variant="secondary">Return to home</ButtonLink>
               </div>
             </div>
           </div>

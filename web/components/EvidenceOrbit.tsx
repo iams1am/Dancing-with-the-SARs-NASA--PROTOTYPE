@@ -120,6 +120,7 @@ export function EvidenceOrbit() {
         (mesh.material as THREE.Material).dispose();
       });
       renderer.dispose();
+      renderer.forceContextLoss();
       mount.removeChild(renderer.domElement);
     };
   }, []);
@@ -127,7 +128,12 @@ export function EvidenceOrbit() {
   const selected = nodes.find((node) => node.id === active) ?? nodes[0];
   return (
     <div className="evidence-orbit">
-      <div className="orbit-canvas" ref={mountRef} aria-label="Interactive 3D evidence orbit" />
+      <div
+        className="orbit-canvas"
+        ref={mountRef}
+        role="group"
+        aria-label="Interactive 3D evidence orbit"
+      />
       <div className="orbit-copy">
         <div className={`evidence-tag tag-${selected.id}`}>{selected.label}</div>
         <h3>What this label means.</h3>

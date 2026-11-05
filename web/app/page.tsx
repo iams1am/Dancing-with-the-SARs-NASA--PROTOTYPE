@@ -1,127 +1,221 @@
-import Link from "next/link";
 import { GlobeScene } from "../components/GlobeScene";
 import { HomeSnapshot } from "../components/HomeSnapshot";
-import { SiteHeader } from "../components/SiteHeader";
+import { SiteFooter } from "../components/SiteFooter";
+import { ButtonLink } from "../components/ui/Primitives";
+
+const steps = [
+  {
+    index: "01",
+    stage: "Region",
+    title: "Inspect a region",
+    copy: "Start with the documented Southern California footprint. The globe and map establish geographic context; neither is treated as a NISAR measurement."
+  },
+  {
+    index: "02",
+    stage: "Data",
+    title: "Examine the radar data",
+    copy: "Read unwrapped interferometric phase in radians, switch to coherence, and inspect the quality-screened 3D surface."
+  },
+  {
+    index: "03",
+    stage: "Evidence",
+    title: "Verify the evidence",
+    copy: "Follow each result to its source metadata, processing rule, and evidence label before drawing a conclusion."
+  }
+];
 
 const evidence = [
-  ["OBSERVED", "From the source product", "Values read directly from the documented satellite product.", "tag-observed"],
-  ["DERIVED", "Calculated in this project", "Results produced from the source values using a stated method.", "tag-derived"],
-  ["CONTEXTUAL", "Used for orientation", "Maps and location information that help place the radar data.", "tag-contextual"],
-  ["POTENTIAL", "Needs more evidence", "Questions that cannot be answered from this sample alone.", "tag-potential"]
+  {
+    kind: "observed",
+    title: "Read from the source product.",
+    copy: "Values taken directly from the documented GUNW product and its metadata."
+  },
+  {
+    kind: "derived",
+    title: "Calculated in this project.",
+    copy: "Results produced from the source values using a stated method."
+  },
+  {
+    kind: "contextual",
+    title: "Used for orientation.",
+    copy: "Maps and location information that help place the radar data."
+  },
+  {
+    kind: "potential",
+    title: "Needs more evidence.",
+    copy: "Questions that cannot be answered from this sample alone."
+  }
 ];
 
 export default function HomePage() {
   return (
-    <div className="page">
-      <div className="shell">
-        <SiteHeader />
-        <main id="main-content">
-          <section className="hero">
-            <div>
-              <div className="eyebrow">NASA SPACE APPS CHALLENGE 2026 · DANCING WITH THE SARS</div>
-              <h1>Explore radar data.<br /><span>Keep the science clear.</span></h1>
-              <p className="lede">
-                TerraCascade helps people explore a documented radar sample
-                without losing sight of where the data came from, how it was
-                processed, or what it cannot prove.
-              </p>
-              <div className="actions">
-                <Link className="button button-primary" href="/explore">Open the explorer <span aria-hidden>↗</span></Link>
-                <Link className="button" href="/methodology">How it works</Link>
-              </div>
-              <div className="proof-row">
-                <span className="proof"><span className="proof-dot" /> Built around NISAR data</span>
-                <span className="proof"><span className="proof-dot" /> Sources and limits included</span>
-              </div>
+    <div className="page home-page">
+      <main id="main-content">
+        <section className="home-hero" aria-labelledby="home-title">
+          <div className="home-hero-copy">
+            <p className="home-eyebrow">Earth observation / SAR data explorer</p>
+            <h1 id="home-title">
+              See Earth&rsquo;s surface
+              <br />
+              through radar.
+            </h1>
+            <p className="home-lede">
+              Explore a documented radar sample, inspect phase and coherence,
+              and trace each result back to its source.
+            </p>
+            <div className="home-actions">
+              <ButtonLink
+                href="/explore"
+                variant="primary"
+                size="lg"
+                trailingIcon="→"
+              >
+                Explore the data
+              </ButtonLink>
+              <ButtonLink href="/methodology" variant="secondary" size="lg">
+                Understand the methodology
+              </ButtonLink>
             </div>
-            <div className="globe-card">
-              <div className="globe-meta">
-                <span className="globe-label">CONTEXTUAL EARTH VIEW</span>
-                <span className="live-pill">INTERACTIVE</span>
-              </div>
-              <GlobeScene />
-              <div className="globe-footer">
-                <div>
-                  <h2 className="globe-foot-title">Start with the location.</h2>
-                  <p className="globe-foot-copy">Drag to rotate · scroll to zoom · pause to inspect. This globe provides context; it is not a NISAR measurement.</p>
-                </div>
-                <div className="globe-control" aria-hidden>
-                  <span className="icon-button">↕</span>
-                  <span className="icon-button">⌕</span>
-                </div>
-              </div>
-            </div>
-          </section>
+            <p className="home-descriptor">
+              Historical NASA/ASF sample · Southern California
+            </p>
+          </div>
 
+          <div className="home-globe">
+            <div className="home-globe-head">
+              <span className="home-globe-label">
+                3D Earth / Geographic context
+              </span>
+              <span className="home-globe-hint">Interactive</span>
+            </div>
+            <div className="home-globe-stage">
+              <GlobeScene />
+            </div>
+            <div className="home-globe-foot">
+              <p>
+                This globe is for orientation and does not represent a NISAR
+                measurement.
+              </p>
+              <span className="home-globe-hint">
+                Drag to rotate · Scroll to zoom
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <div className="shell">
           <HomeSnapshot />
 
-          <section className="section">
-            <div className="section-heading">
+          <section
+            className="home-section home-process"
+            aria-labelledby="home-process-title"
+          >
+            <div className="home-section-head">
               <div>
-                <div className="kicker">HOW TO READ THE PROJECT</div>
-                <h2>Know what each part of the display means.</h2>
+                <p className="home-kicker">How it works</p>
+                <h2 id="home-process-title">
+                  From geographic context to documented evidence.
+                </h2>
               </div>
-              <p>We separate source values, project calculations, map context, and questions that need more data.</p>
+              <p>
+                Three steps, each tied to a view that already exists in the
+                Explorer. No step asks you to trust a number without showing
+                where it came from.
+              </p>
             </div>
-            <div className="evidence-grid">
-              {evidence.map(([tag, title, copy, className]) => (
-                <article className="evidence-card" key={tag}>
-                  <div className={`evidence-tag ${className}`}>{tag}</div>
-                  <h3>{title}</h3>
-                  <p>{copy}</p>
+
+            <ol className="home-step-list">
+              {steps.map((step) => (
+                <li className="home-step" key={step.index}>
+                  <div className="home-step-meta">
+                    <span className="home-step-index">{step.index}</span>
+                    <span>{step.stage}</span>
+                  </div>
+                  <h3>{step.title}</h3>
+                  <p>{step.copy}</p>
+                </li>
+              ))}
+            </ol>
+          </section>
+
+          <section
+            className="home-section home-evidence"
+            aria-labelledby="home-evidence-title"
+          >
+            <div className="home-section-head">
+              <div>
+                <p className="home-kicker">Scientific confidence</p>
+                <h2 id="home-evidence-title">
+                  Four labels. Four kinds of evidence.
+                </h2>
+              </div>
+              <p>
+                Every statement in TerraCascade carries one label. The label
+                describes the kind of evidence behind a result, not the size or
+                importance of the result itself.
+              </p>
+            </div>
+
+            <div className="home-evidence-grid">
+              {evidence.map((item) => (
+                <article
+                  className="home-evidence-item"
+                  data-evidence={item.kind}
+                  key={item.kind}
+                >
+                  <span
+                    className={`tc-evidence-label tc-evidence-${item.kind}`}
+                  >
+                    <span className="tc-evidence-dot" aria-hidden="true" />
+                    {item.kind}
+                  </span>
+                  <h3>{item.title}</h3>
+                  <p>{item.copy}</p>
                 </article>
               ))}
             </div>
           </section>
 
-          <section className="section product-section">
-            <div className="section-heading">
-              <div>
-                <div className="kicker">EXPLORE THE PROJECT</div>
-                <h2>See the data, the method, and the limits.</h2>
-              </div>
+          <section
+            className="home-closing"
+            aria-labelledby="home-closing-title"
+          >
+            <div className="home-closing-main">
+              <p className="home-kicker">Start with the sample</p>
+              <h2 id="home-closing-title">
+                Open the record. Follow the evidence.
+              </h2>
+              <p className="home-closing-copy">
+                Inspect the radar layer, review its quality and processing, and
+                see exactly where the interpretation stops.
+              </p>
+              <ButtonLink
+                href="/explore"
+                variant="primary"
+                size="lg"
+                trailingIcon="→"
+              >
+                Explore the data
+              </ButtonLink>
+            </div>
+
+            <div className="home-limitation">
+              <h3 className="home-limitation-label">Scientific limit</h3>
               <p>
-                Open the sample, review its quality, and check how every
-                browser-ready asset was produced.
+                This historical sample pair can show a radar signal and its
+                quality. It cannot establish a deformation cause, a hazard, or
+                long-term change on its own.
               </p>
             </div>
-            <div className="product-grid">
-              <article className="product-card product-card-featured">
-                <span className="product-index">01</span>
-                <div>
-                  <div className="evidence-tag tag-observed">OBSERVED</div>
-                  <h3>View the radar layer</h3>
-                  <p>Explore phase and coherence from the selected GUNW sample region.</p>
-                </div>
-                <Link href="/explore" className="text-link">Open the explorer ↗</Link>
-              </article>
-              <article className="product-card">
-                <span className="product-index">02</span>
-                <div>
-                  <div className="evidence-tag tag-derived">DERIVED</div>
-                  <h3>Check the processing</h3>
-                  <p>Review the masks, units, coordinates, and time information used to prepare the demo.</p>
-                </div>
-                <Link href="/methodology" className="text-link">Read methodology ↗</Link>
-              </article>
-              <article className="product-card">
-                <span className="product-index">03</span>
-                <div>
-                  <div className="evidence-tag tag-potential">POTENTIAL</div>
-                  <h3>See what is still missing</h3>
-                  <p>Follow the evidence graph to see which questions need additional products or validation.</p>
-                </div>
-                <Link href="/about" className="text-link">See the project ↗</Link>
-              </article>
-            </div>
           </section>
-        </main>
-        <footer className="footer">
-          <div className="footer-inner">
-            <span>TerraCascade / NASA Space Apps Challenge 2026</span>
-            <span>Sample radar data · processing notes · source links</span>
-          </div>
-        </footer>
+        </div>
+      </main>
+
+      <div className="shell">
+        <SiteFooter
+          label="TerraCascade / NASA Space Apps Challenge 2026"
+          note="Sample radar data · processing notes · source links"
+        />
       </div>
     </div>
   );

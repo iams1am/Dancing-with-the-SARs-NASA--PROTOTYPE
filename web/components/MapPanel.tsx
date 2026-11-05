@@ -17,6 +17,8 @@ type MapPanelProps = {
   location: string;
   projection: string;
   imagery: string;
+  overlayMeasurement: string;
+  overlayUnits: string;
   geographicBounds: Bounds;
   contextBounds: Bounds;
 };
@@ -49,7 +51,7 @@ function fitImage(bounds: Bounds, viewport: ViewportSize) {
   };
 }
 
-function buildMapUrl(bounds: Bounds, aspect: number) {
+function buildMapUrl(bounds: Bounds, aspect: number, attempt: number) {
   const query = new URLSearchParams({
     SERVICE: "WMS",
     REQUEST: "GetMap",
@@ -63,7 +65,18 @@ function buildMapUrl(bounds: Bounds, aspect: number) {
     FORMAT: "image/jpeg",
     TIME: "2004-01-01",
   });
+  /* A failed image request can be reused from the browser cache, so the retry
+   * needs a changed URL before the browser will request the basemap again. */
+  if (attempt > 0) query.set("retry", String(attempt));
   return `https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?${query.toString()}`;
+}
+
+function formatLatitude(value: number) {
+  return `${Math.abs(value).toFixed(3)}° ${value >= 0 ? "N" : "S"}`;
+}
+
+function formatLongitude(value: number) {
+  return `${Math.abs(value).toFixed(3)}° ${value >= 0 ? "E" : "W"}`;
 }
 
 export default function MapPanel({
@@ -71,6 +84,8 @@ export default function MapPanel({
   location,
   projection,
   imagery,
+  overlayMeasurement,
+  overlayUnits,
   geographicBounds,
   contextBounds,
 }: MapPanelProps) {
@@ -79,7 +94,7 @@ export default function MapPanel({
   const [opacity, setOpacity] = useState(0.72);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [viewport, setViewport] = useState<ViewportSize>({ width: 1600, height: 440 });
+  const [viewport, setViewport] = useState<ViewportSize>({ width: 0, height: 0 });
   const [selectedLocation, setSelectedLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [worldReady, setWorldReady] = useState(false);
   const [detailReady, setDetailReady] = useState(false);
@@ -99,7 +114,15 @@ export default function MapPanel({
   useEffect(() => {
     const element = viewportRef.current;
     if (!element) return;
-    const updateSize = () => setViewport({ width: element.clientWidth, height: element.clientHeight });
+    const updateSize = () => {
+      const width = element.clientWidth;
+      const height = element.clientHeight;
+      setViewport((current) =>
+        current.width === width && current.height === height
+          ? current
+          : { width, height }
+      );
+    };
     updateSize();
     const observer = new ResizeObserver(updateSize);
     observer.observe(element);
@@ -108,8 +131,14 @@ export default function MapPanel({
 
   const worldImage = fitImage(WORLD_BOUNDS, viewport);
   const detailImage = fitImage(contextBounds, viewport);
-  const worldUrl = useMemo(() => buildMapUrl(WORLD_BOUNDS, worldImage.aspect), [worldImage.aspect]);
-  const detailUrl = useMemo(() => buildMapUrl(contextBounds, detailImage.aspect), [contextBounds, detailImage.aspect]);
+  const worldUrl = useMemo(
+    () => buildMapUrl(WORLD_BOUNDS, worldImage.aspect, assetAttempt),
+    [assetAttempt, worldImage.aspect],
+  );
+  const detailUrl = useMemo(
+    () => buildMapUrl(contextBounds, detailImage.aspect, assetAttempt),
+    [assetAttempt, contextBounds, detailImage.aspect],
+  );
   const detailScale = Math.max(1, zoom);
   const detailOpacity = zoom >= 1 ? 1 : 0;
   const worldMode = zoom < 1;
@@ -121,12 +150,20 @@ export default function MapPanel({
     setDetailError(false);
   }, [worldUrl, detailUrl, assetAttempt]);
 
-  const marker = percentagePosition(contextBounds, center.longitude, center.latitude);
-  const overlayTopLeft = percentagePosition(contextBounds, geographicBounds.west, geographicBounds.north);
+  const markerPercent = percentagePosition(contextBounds, center.longitude, center.latitude);
+  const overlayPercent = percentagePosition(contextBounds, geographicBounds.west, geographicBounds.north);
+  /* Detail-view layers are placed in the basemap's rendered pixel space.
+   * Percentage positions would resolve against the viewport instead, which
+   * drifts whenever the fitted map image is letterboxed or overflows. */
+  const marker = {
+    left: detailImage.left + detailImage.width * parseFloat(markerPercent.left) / 100,
+    top: detailImage.top + detailImage.height * parseFloat(markerPercent.top) / 100,
+  };
   const overlayStyle = {
-    ...overlayTopLeft,
-    width: `${((geographicBounds.east - geographicBounds.west) / (contextBounds.east - contextBounds.west)) * 100}%`,
-    height: `${((geographicBounds.north - geographicBounds.south) / (contextBounds.north - contextBounds.south)) * 100}%`,
+    left: detailImage.left + detailImage.width * parseFloat(overlayPercent.left) / 100,
+    top: detailImage.top + detailImage.height * parseFloat(overlayPercent.top) / 100,
+    width: detailImage.width * ((geographicBounds.east - geographicBounds.west) / (contextBounds.east - contextBounds.west)),
+    height: detailImage.height * ((geographicBounds.north - geographicBounds.south) / (contextBounds.north - contextBounds.south)),
   };
   const worldMarker = percentagePosition(WORLD_BOUNDS, center.longitude, center.latitude);
   const worldOverlayTopLeft = percentagePosition(WORLD_BOUNDS, geographicBounds.west, geographicBounds.north);
@@ -191,8 +228,16 @@ export default function MapPanel({
   }, [clampOffset, viewport.height, viewport.width]);
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    dragRef.current = { active: true, x: event.clientX, y: event.clientY };
     didDragRef.current = false;
+    /* Controls inside the viewport, such as the retry button, must receive
+     * their own pointer events; capturing the pointer here would swallow them. */
+    if ((event.target as HTMLElement).closest("button, a, input, label")) return;
+    /* At 1.00× the fitted map does not need vertical panning. Let touch users
+     * scroll the page past the map; panning becomes available after zooming. */
+    if (event.pointerType === "touch" && zoomRef.current <= 1) {
+      return;
+    }
+    dragRef.current = { active: true, x: event.clientX, y: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
   const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -217,6 +262,7 @@ export default function MapPanel({
   };
   const selectLocation = (event: React.MouseEvent<HTMLDivElement>) => {
     if (didDragRef.current) return;
+    if ((event.target as HTMLElement).closest("button, a, input, label")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - bounds.left;
     const y = event.clientY - bounds.top;
@@ -293,41 +339,61 @@ export default function MapPanel({
   return (
     <div className="map-panel-shell">
       <div className="map-panel-toolbar">
-        <div>
-          <div className="kicker">MAP CONTEXT / NASA GIBS</div>
+        <div className="map-context">
+          <span className="map-context-kicker">Map context / NASA GIBS</span>
           <strong>{location}</strong>
+          <span className="map-context-note">
+            Blue Marble basemap · navigation context, not a NISAR measurement
+          </span>
         </div>
-        <div className="map-controls">
+        <div className="map-controls" role="group" aria-label="Map controls">
           <div className="map-zoom-controls" role="group" aria-label="Map zoom controls">
             <button
               className="map-zoom-button"
               type="button"
               aria-label="Zoom out"
+              title="Zoom out (keyboard: minus)"
               disabled={zoom <= MIN_ZOOM}
               onClick={() => adjustZoom(-0.15)}
             >
               −
             </button>
-            <span aria-live="polite">{zoom.toFixed(2)}×</span>
+            <span className="map-zoom-readout" aria-live="polite">{zoom.toFixed(2)}×</span>
             <button
               className="map-zoom-button"
               type="button"
               aria-label="Zoom in"
+              title="Zoom in (keyboard: plus)"
               disabled={zoom >= 2.4}
               onClick={() => adjustZoom(0.15)}
             >
               +
             </button>
           </div>
-          <button type="button" aria-pressed={scienceVisible} onClick={() => setScienceVisible((current) => !current)}>
-            {scienceVisible ? "HIDE RADAR LAYER" : "SHOW RADAR LAYER"}
+          <button
+            className="map-overlay-toggle"
+            type="button"
+            aria-pressed={scienceVisible}
+            title={scienceVisible ? "Hide the source-derived phase overlay" : "Show the source-derived phase overlay"}
+            onClick={() => setScienceVisible((current) => !current)}
+          >
+            <span className="map-overlay-state" data-active={scienceVisible} aria-hidden="true" />
+            <span>Radar overlay / {scienceVisible ? "On" : "Off"}</span>
           </button>
-          <button type="button" onClick={resetView}>RESET VIEW</button>
+          <button
+            className="map-reset-button"
+            type="button"
+            title="Reset zoom, pan, and selected coordinate (Home)"
+            onClick={resetView}
+          >
+            Reset view
+          </button>
         </div>
       </div>
       <div
         className="map-viewport"
         ref={viewportRef}
+        data-map-interaction={zoom > 1 ? "active" : "scroll"}
         onPointerDown={beginDrag}
         onPointerMove={moveDrag}
         onPointerUp={endDrag}
@@ -335,53 +401,57 @@ export default function MapPanel({
         onClick={selectLocation}
         onKeyDown={handleMapKeyDown}
         role="group"
-        aria-label={`Interactive NASA geographic context map of ${location}. Drag to pan, scroll or use plus and minus to zoom, use arrow keys to pan, and click to select a contextual coordinate. Press Home to reset.`}
+        aria-label={`Interactive NASA geographic context map of ${location}. Drag to pan, scroll or use plus and minus to zoom, use arrow keys to pan, and click to select a contextual coordinate. Press Home to reset. On touch screens, the page scrolls normally at 1.00×; zoom in to pan the map.`}
         aria-busy={mapAssetLoading}
         tabIndex={0}
       >
-        <div className="map-world-surface" style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}>
-          <img
-            className="map-world-image"
-            src={worldUrl}
-            alt="NASA Blue Marble full world overview"
-            style={{ left: worldImage.left, top: worldImage.top, width: worldImage.width, height: worldImage.height }}
-            key={`world-${assetAttempt}`}
-            onLoad={() => setWorldReady(true)}
-            onError={() => setWorldError(true)}
-            draggable={false}
-          />
-          <div
-            className="map-footprint map-world-footprint"
-            style={{
-              left: worldImage.left + worldImage.width * parseFloat(worldOverlayStyle.left) / 100,
-              top: worldImage.top + worldImage.height * parseFloat(worldOverlayStyle.top) / 100,
-              width: worldImage.width * parseFloat(worldOverlayStyle.width) / 100,
-              height: worldImage.height * parseFloat(worldOverlayStyle.height) / 100,
-            }}
-          />
-          <span className="map-marker map-world-marker" style={{ left: worldImage.left + worldImage.width * parseFloat(worldMarker.left) / 100, top: worldImage.top + worldImage.height * parseFloat(worldMarker.top) / 100 }}>
-            <span /><b>TC001</b>
-          </span>
-          {selectedWorldMarker && (
-            <span className="map-selected-marker" style={{ left: worldImage.left + worldImage.width * parseFloat(selectedWorldMarker.left) / 100, top: worldImage.top + worldImage.height * parseFloat(selectedWorldMarker.top) / 100 }}>
-              <span /><b>SELECTED</b>
-            </span>
-          )}
-        </div>
-        <div
-          className="map-surface"
-          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${detailScale})`, opacity: detailOpacity }}
-        >
-          <img className="map-basemap" src={detailUrl} alt="NASA Blue Marble detailed basemap" style={{ left: detailImage.left, top: detailImage.top, width: detailImage.width, height: detailImage.height }} key={`detail-${assetAttempt}`} onLoad={() => setDetailReady(true)} onError={() => setDetailError(true)} draggable={false} />
-          {scienceVisible && <img className="map-scientific-raster" src={imagery} alt="Source-derived GUNW phase overlay" style={{ ...overlayStyle, opacity }} draggable={false} />}
-          <div className="map-footprint" style={overlayStyle} aria-hidden />
-          <span className="map-marker" style={marker}><span /><b>TC001</b></span>
-          {selectedDetailMarker && <span className="map-selected-marker" style={{ left: detailImage.width * parseFloat(selectedDetailMarker.left) / 100, top: detailImage.height * parseFloat(selectedDetailMarker.top) / 100 }}><span /><b>SELECTED</b></span>}
-        </div>
-        <div className="map-scale-label">
-          <span>{worldMode ? "NASA BLUE MARBLE / WORLD OVERVIEW" : "NASA BLUE MARBLE / 2004"}</span>
-          <span>{worldMode ? "FULL EARTH MAP · ZOOM IN FOR AOI" : `${projection} CONTEXT + AOI BOUNDS`}</span>
-        </div>
+        {viewport.width > 0 && viewport.height > 0 ? (
+          <>
+            {!worldError && (
+            <div className="map-world-surface" style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}>
+              <img
+                className="map-world-image"
+                src={worldUrl}
+                alt="NASA Blue Marble full world overview"
+                style={{ left: worldImage.left, top: worldImage.top, width: worldImage.width, height: worldImage.height }}
+                key={`world-${assetAttempt}`}
+                onLoad={() => setWorldReady(true)}
+                onError={() => setWorldError(true)}
+                draggable={false}
+              />
+              <div
+                className="map-footprint map-world-footprint"
+                style={{
+                  left: worldImage.left + worldImage.width * parseFloat(worldOverlayStyle.left) / 100,
+                  top: worldImage.top + worldImage.height * parseFloat(worldOverlayStyle.top) / 100,
+                  width: worldImage.width * parseFloat(worldOverlayStyle.width) / 100,
+                  height: worldImage.height * parseFloat(worldOverlayStyle.height) / 100,
+                }}
+              />
+              <span className="map-marker map-world-marker" style={{ left: worldImage.left + worldImage.width * parseFloat(worldMarker.left) / 100, top: worldImage.top + worldImage.height * parseFloat(worldMarker.top) / 100 }}>
+                <span /><b>TC001</b>
+              </span>
+              {selectedWorldMarker && (
+                <span className="map-selected-marker" style={{ left: worldImage.left + worldImage.width * parseFloat(selectedWorldMarker.left) / 100, top: worldImage.top + worldImage.height * parseFloat(selectedWorldMarker.top) / 100 }}>
+                  <span /><b>SELECTED</b>
+                </span>
+              )}
+            </div>
+            )}
+            {!detailError && (
+            <div
+              className="map-surface"
+              style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${detailScale})`, opacity: detailOpacity }}
+            >
+              <img className="map-basemap" src={detailUrl} alt="NASA Blue Marble detailed basemap" style={{ left: detailImage.left, top: detailImage.top, width: detailImage.width, height: detailImage.height }} key={`detail-${assetAttempt}`} onLoad={() => setDetailReady(true)} onError={() => setDetailError(true)} draggable={false} />
+              {scienceVisible && <img className="map-scientific-raster" src={imagery} alt="Source-derived GUNW phase overlay" style={{ ...overlayStyle, opacity }} draggable={false} />}
+              <div className="map-footprint" style={overlayStyle} aria-hidden />
+              <span className="map-marker" style={marker}><span /><b>TC001</b></span>
+              {selectedDetailMarker && <span className="map-selected-marker" style={{ left: detailImage.left + detailImage.width * parseFloat(selectedDetailMarker.left) / 100, top: detailImage.top + detailImage.height * parseFloat(selectedDetailMarker.top) / 100 }}><span /><b>SELECTED</b></span>}
+            </div>
+            )}
+          </>
+        ) : null}
         {mapAssetError ? (
           <div className="map-asset-state map-asset-error" role="alert">
             <strong>NASA basemap unavailable</strong>
@@ -396,13 +466,64 @@ export default function MapPanel({
         ) : null}
       </div>
       <div className="map-panel-footer">
-        <span><i className="status-dot" /> Sample footprint and center point</span>
-        <a className="map-attribution" href="https://gibs.earthdata.nasa.gov/" target="_blank" rel="noreferrer">NASA GIBS imagery ↗</a>
-        <label className="map-opacity">
-          <span>RASTER {Math.round(opacity * 100)}%</span>
-          <input type="range" min="0" max="1" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} aria-label="Scientific raster opacity" />
-        </label>
-        <span aria-live="polite">{selectedLocation ? `Selected ${selectedLocation.latitude.toFixed(3)}° · ${selectedLocation.longitude.toFixed(3)}°` : "Click to choose a location · drag to pan · scroll or + / − to zoom"}</span>
+        <ul className="map-legend" aria-label="Map layers and symbols">
+          <li className="map-legend-item">
+            <span className="map-legend-swatch map-legend-basemap" aria-hidden="true" />
+            <span>Context basemap · NASA Blue Marble (2004)</span>
+          </li>
+          <li className="map-legend-item" data-active={scienceVisible}>
+            <span className="map-legend-swatch map-legend-overlay" aria-hidden="true" />
+            <span>
+              Radar overlay / {scienceVisible ? "On" : "Off"}
+              {scienceVisible
+                ? ` · ${overlayMeasurement} (${overlayUnits})${worldMode ? " · zoom to AOI" : ""}`
+                : " · no source-derived raster shown"}
+            </span>
+          </li>
+          <li className="map-legend-item">
+            <span className="map-legend-swatch map-legend-footprint" aria-hidden="true" />
+            <span className="map-legend-swatch map-legend-center" aria-hidden="true" />
+            <span>AOI footprint / sample center</span>
+          </li>
+        </ul>
+        <div className="map-footer-readouts">
+          {scienceVisible ? (
+            <label className="map-opacity">
+              <span>Overlay opacity · {Math.round(opacity * 100)}%</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={opacity}
+                onChange={(event) => setOpacity(Number(event.target.value))}
+                aria-label="Scientific raster opacity"
+              />
+            </label>
+          ) : null}
+          <div className="map-coordinate-readout" aria-live="polite">
+            <span>{selectedLocation ? "Selected coordinate" : "Sample center"}</span>
+            <strong>
+              {selectedLocation
+                ? `${formatLatitude(selectedLocation.latitude)} · ${formatLongitude(selectedLocation.longitude)}`
+                : `${formatLatitude(center.latitude)} · ${formatLongitude(center.longitude)}`}
+            </strong>
+          </div>
+        </div>
+        <div className="map-footer-notes">
+          <p className="map-footer-hint">
+            AOI footprint in {projection} · click the map to read a coordinate ·
+            drag to pan · scroll or + / − to zoom
+          </p>
+          <p className="map-touch-note">
+            {zoom > 1
+              ? "Map panning is active. Use Reset view to release page scrolling."
+              : "Touch screens: the page scrolls freely at 1.00×. Zoom in to pan the map."}
+          </p>
+        </div>
+        <a className="map-attribution" href="https://gibs.earthdata.nasa.gov/" target="_blank" rel="noreferrer">
+          NASA GIBS imagery ↗
+        </a>
       </div>
     </div>
   );

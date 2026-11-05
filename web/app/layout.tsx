@@ -1,5 +1,22 @@
 import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Mono, Inter } from "next/font/google";
+import { SiteHeader } from "../components/SiteHeader";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+  fallback: ["system-ui", "Segoe UI", "sans-serif"]
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-plex-mono",
+  display: "swap",
+  fallback: ["ui-monospace", "Consolas", "monospace"]
+});
 
 export const metadata: Metadata = {
   title: {
@@ -36,7 +53,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#06111d",
+  themeColor: "#0b0e12",
   colorScheme: "dark",
   width: "device-width",
   initialScale: 1
@@ -46,9 +63,10 @@ export default function RootLayout({
   children
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${inter.variable} ${plexMono.variable}`}>
       <body suppressHydrationWarning>
         <a className="skip-link" href="#main-content">Skip to main content</a>
+        <SiteHeader />
         {children}
       </body>
     </html>
